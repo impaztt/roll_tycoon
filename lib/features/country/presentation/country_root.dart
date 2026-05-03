@@ -22,6 +22,18 @@ class CountryRoot extends ConsumerWidget {
       duration: const Duration(milliseconds: 450),
       switchInCurve: Curves.easeOutCubic,
       switchOutCurve: Curves.easeInCubic,
+      // Default layoutBuilder gives children loose constraints, which lets
+      // each child Scaffold shrink-wrap and end up tiny at the top of the
+      // screen on mobile. Force children to fill via Positioned.fill.
+      layoutBuilder: (currentChild, previousChildren) {
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            for (final c in previousChildren) Positioned.fill(child: c),
+            if (currentChild != null) Positioned.fill(child: currentChild),
+          ],
+        );
+      },
       transitionBuilder: (child, anim) {
         // Zoom-in feel: parcel scales up from 0.85 with fade,
         // globe fades back in scaling down from 1.05.
