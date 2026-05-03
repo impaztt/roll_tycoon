@@ -92,6 +92,11 @@ class _ParcelViewState extends ConsumerState<ParcelView> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
+        // Required: Scaffold body gives loose constraints, and the only
+        // non-Positioned child here (the SafeArea-wrapped top bar) is ~80px
+        // tall. Without expand, Stack would shrink to 80px and the bottom
+        // tab bar would render at y=80 instead of the screen bottom.
+        fit: StackFit.expand,
         children: [
           // Sky gradient that matches biome
           Positioned.fill(

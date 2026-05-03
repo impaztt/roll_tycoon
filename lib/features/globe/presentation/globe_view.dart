@@ -81,6 +81,10 @@ class _GlobeViewState extends ConsumerState<GlobeView>
     return Scaffold(
       backgroundColor: const Color(0xFF1A1438),
       body: Stack(
+        // See parcel_view.dart for why this is required — Stack defaults to
+        // sizing itself to its largest non-positioned child under loose
+        // constraints, which would collapse the layout.
+        fit: StackFit.expand,
         children: [
           // Starfield + nebula gradient
           const Positioned.fill(
