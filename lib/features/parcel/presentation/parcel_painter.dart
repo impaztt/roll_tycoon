@@ -24,7 +24,9 @@ class ParcelPainter extends CustomPainter {
   final TileCoord? hoveredTile;
   final BuildSelection? buildSelection;
   final bool isValidPlacement;
-  final Offset cameraOffset;
+
+  /// Where grid (0,0) lands on the canvas, in screen pixels.
+  final Offset origin;
   final double cameraScale;
 
   ParcelPainter({
@@ -34,15 +36,14 @@ class ParcelPainter extends CustomPainter {
     required this.hoveredTile,
     required this.buildSelection,
     required this.isValidPlacement,
-    required this.cameraOffset,
+    required this.origin,
     required this.cameraScale,
   });
 
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
-    canvas.translate(size.width / 2 + cameraOffset.dx,
-        size.height * 0.30 + cameraOffset.dy);
+    canvas.translate(origin.dx, origin.dy);
     canvas.scale(cameraScale);
 
     _paintGroundShadow(canvas);

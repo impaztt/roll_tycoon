@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -23,12 +24,48 @@ class ParcelView extends ConsumerStatefulWidget {
 }
 
 class _ParcelViewState extends ConsumerState<ParcelView> {
-  Offset _camera = Offset.zero;
+  /// Where grid (0,0) lands on the canvas, in screen pixels.
+  /// Initialized lazily once we know the screen size and active park.
+  Offset _origin = Offset.zero;
   double _scale = 1.0;
+  bool _initialized = false;
+
   Offset? _gestureFocal;
-  Offset? _gestureCamera;
+  Offset? _gestureOrigin;
   double? _gestureScale;
   TileCoord? _hover;
+
+  /// Compute an [_origin] + [_scale] that fits the whole park into the
+  /// visible area between the top bar and the bottom panel, then centers
+  /// the diamond. Without this, on small phones the park diamond renders
+  /// way off-screen and the player can't tap anything.
+  void _autoFit(Size screen, EdgeInsets padding, Park park) {
+    final topReserved = padding.top + 64; // back button row
+    final bottomReserved = padding.bottom + 200; // build/menu/card panel
+    final availW = math.max(160.0, screen.width - 32);
+    final availH = math.max(160.0, screen.height - topReserved - bottomReserved);
+
+    final diamondW = (park.width + park.height) * IsoProjection.tileWidth / 2;
+    final diamondH = (park.width + park.height) * IsoProjection.tileHeight / 2;
+
+    final fit = math.min(availW / diamondW, availH / diamondH);
+    final scale = fit.clamp(0.5, 1.2);
+
+    // Diamond's center in unscaled grid-projection coordinates.
+    // (For a square park with width==height, x is 0.)
+    final dCenterX = (park.width - park.height) * IsoProjection.tileWidth / 4;
+    final dCenterY = (park.width + park.height) * IsoProjection.tileHeight / 4;
+
+    final visibleCenterY = topReserved + availH / 2;
+    setState(() {
+      _scale = scale;
+      _origin = Offset(
+        screen.width / 2 - dCenterX * scale,
+        visibleCenterY - dCenterY * scale,
+      );
+      _initialized = true;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +79,15 @@ class _ParcelViewState extends ConsumerState<ParcelView> {
 
     final biome = parcel.biome;
     final isValid = _checkValid(park, _hover, ui.selection);
+
+    // Auto-fit on first build of this parcel.
+    if (!_initialized) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _initialized) return;
+        _autoFit(MediaQuery.of(context).size, MediaQuery.of(context).padding,
+            park);
+      });
+    }
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -66,14 +112,21 @@ class _ParcelViewState extends ConsumerState<ParcelView> {
             child: GestureDetector(
               onScaleStart: (d) {
                 _gestureFocal = d.focalPoint;
-                _gestureCamera = _camera;
+                _gestureOrigin = _origin;
                 _gestureScale = _scale;
               },
               onScaleUpdate: (d) {
                 setState(() {
-                  _scale = (_gestureScale! * d.scale).clamp(0.6, 2.2);
-                  final delta = d.focalPoint - _gestureFocal!;
-                  _camera = _gestureCamera! + delta;
+                  // Pinch to zoom around the focal point so the spot under
+                  // your fingers stays put; pure scale would snap to (0,0).
+                  final newScale =
+                      (_gestureScale! * d.scale).clamp(0.4, 2.5);
+                  final scaleRatio = newScale / _gestureScale!;
+                  final focalDelta = d.focalPoint - _gestureFocal!;
+                  _origin = (_gestureOrigin! - _gestureFocal!) * scaleRatio +
+                      _gestureFocal! +
+                      focalDelta;
+                  _scale = newScale;
                 });
               },
               onTapUp: (details) =>
@@ -86,7 +139,7 @@ class _ParcelViewState extends ConsumerState<ParcelView> {
                   hoveredTile: _hover,
                   buildSelection: ui.selection,
                   isValidPlacement: isValid,
-                  cameraOffset: _camera,
+                  origin: _origin,
                   cameraScale: _scale,
                 ),
                 child: const SizedBox.expand(),
@@ -184,19 +237,14 @@ class _ParcelViewState extends ConsumerState<ParcelView> {
     return null;
   }
 
-  /// Reverse-projection: screen → grid tile, accounting for camera & scale.
+  /// Reverse-projection: screen → grid tile, accounting for origin & scale.
   TileCoord? _screenToTile(Offset screenLocal) {
-    final size = MediaQuery.of(context).size;
-    final originX = size.width / 2 + _camera.dx;
-    final originY = size.height * 0.30 + _camera.dy;
     final adjusted = Offset(
-      (screenLocal.dx - originX) / _scale,
-      (screenLocal.dy - originY) / _scale,
+      (screenLocal.dx - _origin.dx) / _scale,
+      (screenLocal.dy - _origin.dy) / _scale,
     );
     final grid = IsoProjection.unproject(adjusted);
-    final gx = grid.dx.floor();
-    final gy = grid.dy.floor();
-    return TileCoord(gx, gy);
+    return TileCoord(grid.dx.floor(), grid.dy.floor());
   }
 
   bool _checkValid(Park park, TileCoord? tile, BuildSelection? sel) {
